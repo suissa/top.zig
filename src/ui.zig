@@ -5,12 +5,18 @@ const model = @import("model.zig");
 pub const ViewState = struct {
     displayed_cpu: f32 = 0,
     displayed_memory: f32 = 0,
+    displayed_disk: f32 = 0,
+    displayed_rx_bps: f64 = 0,
+    displayed_tx_bps: f64 = 0,
     selected: usize = 0,
     frame: u64 = 0,
 
     pub fn animate(self: *ViewState, snapshot: *const model.Snapshot) void {
         self.displayed_cpu += (snapshot.cpu_percent - self.displayed_cpu) * 0.16;
         self.displayed_memory += (snapshot.memory_percent - self.displayed_memory) * 0.16;
+        self.displayed_disk += (snapshot.root_disk_percent - self.displayed_disk) * 0.16;
+        self.displayed_rx_bps += (snapshot.network_rx_bps - self.displayed_rx_bps) * 0.18;
+        self.displayed_tx_bps += (snapshot.network_tx_bps - self.displayed_tx_bps) * 0.18;
         self.frame +%= 1;
     }
 };
@@ -41,13 +47,11 @@ pub fn tabAt(tab_set: *const model.TabSet, x: u16, y: u16) ?model.Tab {
     if (y != 2) return null;
 
     var cursor: u16 = 1;
-    var visible: usize = 0;
     for (all_tabs) |tab| {
         if (!tab_set.isEnabled(tab)) continue;
         const width: u16 = @intCast(tab.label().len + 4);
         if (x >= cursor and x < cursor + width) return tab;
         cursor += width + 1;
-        visible += 1;
     }
     return null;
 }
@@ -81,8 +85,8 @@ pub fn render(
         .cpu => drawCpu(screen, snapshot, history, view, sort_mode),
         .memory => drawMemory(screen, snapshot, history, view, sort_mode),
         .processes => drawProcesses(screen, snapshot, sort_mode, view.frame),
-        .disk => drawPlanned(screen, "DISK", "Capacity, throughput, I/O pressure and top I/O processes", "docs/Tabs/disk/.README.md"),
-        .network => drawPlanned(screen, "NETWORK", "Interfaces, RX/TX, errors, sockets and process correlation", "docs/Tabs/network/.README.md"),
+        .disk => drawDisk(screen, snapshot, view),
+        .network => drawNetwork(screen, view),
         .containers => drawPlanned(screen, "CONTAINERS", "cgroup/Docker ownership, resource use and process mapping", "docs/Tabs/containers/.README.md"),
         .system => drawSystem(screen, snapshot),
     }
@@ -165,6 +169,95 @@ fn drawMemory(screen: *tui.screen.Screen, s: *const model.Snapshot, history: *co
 
 fn drawProcesses(screen: *tui.screen.Screen, s: *const model.Snapshot, sort_mode: model.SortMode, frame: u64) void {
     drawProcessTable(screen, 1, 4, screen.width - 2, screen.height -| 6, s, sort_mode, frame, 0);
+}
+
+fn drawDisk(screen: *tui.screen.Screen, s: *const model.Snapshot, view: *ViewState) void {
+    drawMetricPanel(screen, 1, 4, screen.width - 2, 6, "ROOT FILESYSTEM", view.displayed_disk, green, amber);
+
+    const used_gib = @as(f64, @floatFromInt(s.root_disk_used_bytes)) / (1024.0 * 1024.0 * 1024.0);
+    const total_gib = @as(f64, @floatFromInt(s.root_disk_total_bytes)) / (1024.0 * 1024.0 * 1024.0);
+    var buf: [160]u8 = undefined;
+    const text = std.fmt.bufPrint(&buf, "Used {d:.2} GiB / {d:.2} GiB   free {d:.2} GiB", .{
+        used_gib,
+        total_gib,
+        @max(0.0, total_gib - used_gib),
+    }) catch "";
+    screen.setStyle(tui.Style.default.setFg(white));
+    screen.putStringAt(3, 11, text);
+
+    drawInfoPanel(
+        screen,
+        1,
+        13,
+        screen.width - 2,
+        7,
+        "DISK NEXT",
+        "Next collector: /proc/diskstats throughput, PSI I/O and per-process /proc/<pid>/io",
+        dim,
+    );
+}
+
+fn drawNetwork(screen: *tui.screen.Screen, view: *ViewState) void {
+    const half = (screen.width - 3) / 2;
+    drawValuePanel(screen, 1, 4, half, 7, "RX", view.displayed_rx_bps, cyan, "B/s");
+    drawValuePanel(screen, 2 + half, 4, half, 7, "TX", view.displayed_tx_bps, violet, "B/s");
+
+    drawInfoPanel(
+        screen,
+        1,
+        12,
+        screen.width - 2,
+        8,
+        "NETWORK",
+        "Aggregated non-loopback throughput from /proc/net/dev. Next: interfaces, drops/errors, sockets and PID correlation.",
+        dim,
+    );
+}
+
+fn drawValuePanel(screen: *tui.screen.Screen, x: u16, y: u16, w: u16, h: u16, title: []const u8, value: f64, color: tui.Color, unit: []const u8) void {
+    screen.setStyle(tui.Style.default.setFg(dim).setBg(panel));
+    screen.fill(x, y, w, h, ' ');
+    screen.drawBox(x, y, w, h, .rounded);
+
+    screen.setStyle(tui.Style.default.setFg(color).setBg(panel).bold());
+    screen.putStringAt(x + 2, y + 1, title);
+
+    var value_buf: [64]u8 = undefined;
+    const scaled = scaleRate(value);
+    const value_text = std.fmt.bufPrint(&value_buf, "{d:.2} {s}{s}", .{ scaled.value, scaled.prefix, unit }) catch "";
+    screen.setStyle(tui.Style.default.setFg(white).setBg(panel).bold());
+    screen.putStringAt(x + 2, y + 3, value_text);
+}
+
+const ScaledRate = struct {
+    value: f64,
+    prefix: []const u8,
+};
+
+fn scaleRate(bytes_per_second: f64) ScaledRate {
+    if (bytes_per_second >= 1024.0 * 1024.0 * 1024.0) return .{
+        .value = bytes_per_second / (1024.0 * 1024.0 * 1024.0),
+        .prefix = "Gi",
+    };
+    if (bytes_per_second >= 1024.0 * 1024.0) return .{
+        .value = bytes_per_second / (1024.0 * 1024.0),
+        .prefix = "Mi",
+    };
+    if (bytes_per_second >= 1024.0) return .{
+        .value = bytes_per_second / 1024.0,
+        .prefix = "Ki",
+    };
+    return .{ .value = bytes_per_second, .prefix = "" };
+}
+
+fn drawInfoPanel(screen: *tui.screen.Screen, x: u16, y: u16, w: u16, h: u16, title: []const u8, message: []const u8, color: tui.Color) void {
+    screen.setStyle(tui.Style.default.setFg(dim).setBg(panel));
+    screen.fill(x, y, w, h, ' ');
+    screen.drawBox(x, y, w, h, .rounded);
+    screen.setStyle(tui.Style.default.setFg(color).setBg(panel).bold());
+    screen.putStringAt(x + 2, y + 1, title);
+    screen.setStyle(tui.Style.default.setFg(white).setBg(panel));
+    screen.putStringAt(x + 2, y + 3, message);
 }
 
 fn drawSystem(screen: *tui.screen.Screen, s: *const model.Snapshot) void {
