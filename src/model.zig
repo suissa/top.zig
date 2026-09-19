@@ -43,6 +43,86 @@ pub const Tab = enum(u8) {
     }
 };
 
+
+pub const TabSet = struct {
+    enabled: [8]bool = [_]bool{true} ** 8,
+
+    pub fn all() TabSet {
+        return .{};
+    }
+
+    pub fn fromCsv(csv: []const u8) TabSet {
+        var result = TabSet{ .enabled = [_]bool{false} ** 8 };
+        var it = std.mem.tokenizeScalar(u8, csv, ',');
+        var found = false;
+        while (it.next()) |raw| {
+            const name = std.mem.trim(u8, raw, " \t\r\n");
+            if (tabFromName(name)) |tab| {
+                result.enabled[@intFromEnum(tab)] = true;
+                found = true;
+            }
+        }
+        return if (found) result else TabSet.all();
+    }
+
+    pub fn isEnabled(self: *const TabSet, tab: Tab) bool {
+        return self.enabled[@intFromEnum(tab)];
+    }
+
+    pub fn count(self: *const TabSet) usize {
+        var n: usize = 0;
+        for (self.enabled) |value| if (value) n += 1;
+        return n;
+    }
+
+    pub fn first(self: *const TabSet) Tab {
+        for (self.enabled, 0..) |value, i| {
+            if (value) return @enumFromInt(i);
+        }
+        return .overview;
+    }
+
+    pub fn nth(self: *const TabSet, target: usize) ?Tab {
+        var visible: usize = 0;
+        for (self.enabled, 0..) |value, i| {
+            if (!value) continue;
+            if (visible == target) return @enumFromInt(i);
+            visible += 1;
+        }
+        return null;
+    }
+
+    pub fn next(self: *const TabSet, current: Tab) Tab {
+        var i: usize = 1;
+        while (i <= 8) : (i += 1) {
+            const idx = (@intFromEnum(current) + i) % 8;
+            const tab: Tab = @enumFromInt(idx);
+            if (self.isEnabled(tab)) return tab;
+        }
+        return current;
+    }
+
+    pub fn previous(self: *const TabSet, current: Tab) Tab {
+        var i: usize = 1;
+        while (i <= 8) : (i += 1) {
+            const idx = (@intFromEnum(current) + 8 - (i % 8)) % 8;
+            const tab: Tab = @enumFromInt(idx);
+            if (self.isEnabled(tab)) return tab;
+        }
+        return current;
+    }
+
+    fn tabFromName(name: []const u8) ?Tab {
+        inline for ([_]Tab{ .overview, .cpu, .memory, .processes, .disk, .network, .containers, .system }) |tab| {
+            if (std.ascii.eqlIgnoreCase(name, tab.label())) return tab;
+        }
+        if (std.ascii.eqlIgnoreCase(name, "proc")) return .processes;
+        if (std.ascii.eqlIgnoreCase(name, "mem")) return .memory;
+        if (std.ascii.eqlIgnoreCase(name, "net")) return .network;
+        return null;
+    }
+};
+
 pub const Process = struct {
     pid: u32 = 0,
     ppid: u32 = 0,
