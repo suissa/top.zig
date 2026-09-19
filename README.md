@@ -62,6 +62,28 @@ zig build test
 zig fmt build.zig src
 ```
 
+## Configurable tabs
+
+By default all tabs are enabled. A server can expose only the views you care about:
+
+```bash
+./zig-out/bin/top.zig --tabs=overview,cpu,memory,processes
+./zig-out/bin/top.zig --tabs=overview,disk,network
+./zig-out/bin/top.zig --tabs=processes,containers
+```
+
+The visible tabs are renumbered from left to right, so keys `1..8` always address the tabs currently shown.
+
+Navigation:
+
+- `Tab`, Right Arrow, `]` or `l`: next enabled tab.
+- Left Arrow, `[` or `h`: previous enabled tab.
+- `1..8`: select the Nth visible tab.
+- Mouse click: select a tab directly.
+- `c`, `m`, `p`: process sort by CPU, memory or PID.
+- `r`: force refresh.
+- `q` or Ctrl+C: quit.
+
 ## Architecture
 
 ```text
