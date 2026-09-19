@@ -109,7 +109,7 @@ pub fn main() !void {
 
         ui.render(&screen, &snapshot, &history, &view, sort_mode, active_tab, now);
         try renderer.render(&screen);
-        std.Thread.sleep(33 * std.time.ns_per_ms);
+        _ = c.usleep(33_000);
     }
 }
 
