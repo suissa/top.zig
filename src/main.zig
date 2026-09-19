@@ -16,7 +16,7 @@ pub fn main() !void {
     var term = try tui.terminal.Terminal.init(.{
         .alternate_screen = true,
         .hide_cursor = true,
-        .enable_mouse = false,
+        .enable_mouse = true,
         .enable_paste = false,
         .enable_focus = false,
     });
@@ -29,6 +29,8 @@ pub fn main() !void {
     var renderer = tui.renderer.Renderer.init(allocator);
     defer renderer.deinit();
 
+    var input = tui.input.InputReader.init(allocator);
+
     var snapshot = model.Snapshot{};
     var history = model.History{};
     var view = ui.ViewState{};
@@ -39,26 +41,54 @@ pub fn main() !void {
     var last_collect_ns: i128 = 0;
 
     while (true) {
-        if (readKey()) |key| {
-            if (model.Tab.fromDigit(key)) |tab| {
-                active_tab = tab;
-            } else switch (key) {
-                'q', 'Q', 3 => break,
-                9, ']' => active_tab = active_tab.next(),
-                '[' => active_tab = active_tab.previous(),
-                'c', 'C' => {
-                    sort_mode = .cpu;
-                    force_refresh = true;
+        if (readEvent(&input)) |event| {
+            switch (event) {
+                .key => |key| {
+                    if (key.modifiers.ctrl) {
+                        switch (key.key) {
+                            .char => |ch| if (ch == 'c') break,
+                            else => {},
+                        }
+                    }
+
+                    switch (key.key) {
+                        .tab => active_tab = if (key.modifiers.shift) active_tab.previous() else active_tab.next(),
+                        .left => active_tab = active_tab.previous(),
+                        .right => active_tab = active_tab.next(),
+                        .char => |ch| {
+                            if (ch <= 0x7f) {
+                                const byte: u8 = @intCast(ch);
+                                if (model.Tab.fromDigit(byte)) |tab| {
+                                    active_tab = tab;
+                                } else switch (byte) {
+                                    'q', 'Q' => break,
+                                    '[', 'h' => active_tab = active_tab.previous(),
+                                    ']', 'l' => active_tab = active_tab.next(),
+                                    'c', 'C' => {
+                                        sort_mode = .cpu;
+                                        force_refresh = true;
+                                    },
+                                    'm', 'M' => {
+                                        sort_mode = .memory;
+                                        force_refresh = true;
+                                    },
+                                    'p', 'P' => {
+                                        sort_mode = .pid;
+                                        force_refresh = true;
+                                    },
+                                    'r', 'R' => force_refresh = true,
+                                    else => {},
+                                }
+                            }
+                        },
+                        else => {},
+                    }
                 },
-                'm', 'M' => {
-                    sort_mode = .memory;
-                    force_refresh = true;
+                .mouse => |mouse| {
+                    if (mouse.kind == .press and mouse.button == .left) {
+                        if (ui.tabAt(mouse.x, mouse.y)) |tab| active_tab = tab;
+                    }
                 },
-                'p', 'P' => {
-                    sort_mode = .pid;
-                    force_refresh = true;
-                },
-                'r', 'R' => force_refresh = true,
                 else => {},
             }
         }
@@ -83,19 +113,23 @@ pub fn main() !void {
     }
 }
 
-fn readKey() ?u8 {
+fn readEvent(input: *tui.input.InputReader) ?tui.events.Event {
     var fds = [_]c.struct_pollfd{.{
         .fd = c.STDIN_FILENO,
         .events = c.POLLIN,
         .revents = 0,
     }};
+
     const ready = c.poll(&fds, 1, 0);
     if (ready <= 0 or (fds[0].revents & c.POLLIN) == 0) return null;
-    var byte: u8 = 0;
-    const n = c.read(c.STDIN_FILENO, &byte, 1);
-    return if (n == 1) byte else null;
-}
 
+    var bytes: [32]u8 = undefined;
+    const n = c.read(c.STDIN_FILENO, &bytes, bytes.len);
+    if (n <= 0) return null;
+
+    const len: usize = @intCast(n);
+    return input.parse(bytes[0..len]) catch null;
+}
 
 fn monotonicNs() i128 {
     var ts: c.struct_timespec = undefined;
