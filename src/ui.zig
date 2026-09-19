@@ -37,15 +37,18 @@ const all_tabs = [_]model.Tab{
 };
 
 
-pub fn tabAt(x: u16, y: u16) ?model.Tab {
+pub fn tabAt(tab_set: *const model.TabSet, x: u16, y: u16) ?model.Tab {
     if (y != 2) return null;
 
     var cursor: u16 = 1;
-    for (all_tabs, 0..) |tab, i| {
-        _ = i;
+    var visible: usize = 0;
+    for (all_tabs) |tab| {
+        if (!tab_set.isEnabled(tab)) continue;
+        _ = visible;
         const width: u16 = @intCast(tab.label().len + 4);
         if (x >= cursor and x < cursor + width) return tab;
         cursor += width + 1;
+        visible += 1;
     }
     return null;
 }
@@ -56,6 +59,7 @@ pub fn render(
     history: *const model.History,
     view: *ViewState,
     sort_mode: model.SortMode,
+    tab_set: *const model.TabSet,
     active_tab: model.Tab,
     now_ns: i128,
 ) void {
@@ -71,7 +75,7 @@ pub fn render(
     }
 
     drawHeader(screen, snapshot, now_ns);
-    drawTabs(screen, active_tab);
+    drawTabs(screen, tab_set, active_tab);
 
     switch (active_tab) {
         .overview => drawOverview(screen, snapshot, history, view, sort_mode),
@@ -84,7 +88,7 @@ pub fn render(
         .system => drawSystem(screen, snapshot),
     }
 
-    drawFooter(screen, sort_mode, active_tab);
+    drawFooter(screen, sort_mode, tab_set, active_tab);
 }
 
 fn drawHeader(screen: *tui.screen.Screen, s: *const model.Snapshot, now_ns: i128) void {
@@ -109,12 +113,14 @@ fn drawHeader(screen: *tui.screen.Screen, s: *const model.Snapshot, now_ns: i128
     screen.putStringAt(x, 1, text);
 }
 
-fn drawTabs(screen: *tui.screen.Screen, active: model.Tab) void {
+fn drawTabs(screen: *tui.screen.Screen, tab_set: *const model.TabSet, active: model.Tab) void {
     screen.setStyle(tui.Style.default.setBg(tab_bg).setFg(dim));
     screen.fill(0, 2, screen.width, 1, ' ');
 
     var x: u16 = 1;
-    for (all_tabs, 0..) |tab, i| {
+    var visible: usize = 0;
+    for (all_tabs) |tab| {
+        if (!tab_set.isEnabled(tab)) continue;
         if (x + tab.label().len + 4 >= screen.width) break;
         const is_active = tab == active;
         screen.setStyle(if (is_active)
@@ -123,7 +129,8 @@ fn drawTabs(screen: *tui.screen.Screen, active: model.Tab) void {
             tui.Style.default.setBg(tab_bg).setFg(dim));
 
         var label_buf: [32]u8 = undefined;
-        const label = std.fmt.bufPrint(&label_buf, " {d}:{s} ", .{ i + 1, tab.label() }) catch "";
+        const label = std.fmt.bufPrint(&label_buf, " {d}:{s} ", .{ visible + 1, tab.label() }) catch "";
+        visible += 1;
         screen.putStringAt(x, 2, label);
         x += @intCast(label.len + 1);
     }
@@ -303,7 +310,7 @@ fn drawPlanned(screen: *tui.screen.Screen, title: []const u8, description: []con
     screen.putStringAt(3, 11, doc);
 }
 
-fn drawFooter(screen: *tui.screen.Screen, sort_mode: model.SortMode, active_tab: model.Tab) void {
+fn drawFooter(screen: *tui.screen.Screen, sort_mode: model.SortMode, tab_set: *const model.TabSet, active_tab: model.Tab) void {
     if (screen.height < 2) return;
     const y = screen.height - 1;
     screen.setStyle(tui.Style.default.setBg(tab_bg).setFg(dim));
@@ -316,8 +323,8 @@ fn drawFooter(screen: *tui.screen.Screen, sort_mode: model.SortMode, active_tab:
         .pid => "PID",
     };
     var buf: [220]u8 = undefined;
-    const text = std.fmt.bufPrint(&buf, " Tab/]/[ navigate   1-8 direct   q quit   c/m/p sort   r refresh   tab:{s} sort:{s}", .{
-        active_tab.label(), active_sort,
+    const text = std.fmt.bufPrint(&buf, " Tab/arrows navigate   1-{d} direct   click tabs   q quit   c/m/p sort   tab:{s} sort:{s}", .{
+        tab_set.count(), active_tab.label(), active_sort,
     }) catch "";
     screen.putStringAt(2, y, text);
 }
