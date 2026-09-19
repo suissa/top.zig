@@ -43,7 +43,6 @@ pub const Tab = enum(u8) {
     }
 };
 
-
 pub const TabSet = struct {
     enabled: [8]bool = [_]bool{true} ** 8,
 
@@ -71,7 +70,9 @@ pub const TabSet = struct {
 
     pub fn count(self: *const TabSet) usize {
         var n: usize = 0;
-        for (self.enabled) |value| {\n            if (value) n += 1;\n        }
+        for (self.enabled) |value| {
+            if (value) n += 1;
+        }
         return n;
     }
 
