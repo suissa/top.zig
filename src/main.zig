@@ -3,6 +3,7 @@ const tui = @import("tui");
 const model = @import("model.zig");
 const collector = @import("collector.zig");
 const ui = @import("ui.zig");
+const render_adapter = @import("renderer.zig");
 
 const c = @cImport({
     @cInclude("poll.h");
@@ -35,7 +36,7 @@ pub fn main() !void {
     var screen = try tui.screen.Screen.init(allocator, initial_size.cols, initial_size.rows);
     defer screen.deinit();
 
-    var renderer = tui.renderer.ImmediateRenderer.init();
+    var renderer = render_adapter.Renderer.init();
 
     var input = tui.input.InputReader.init(allocator);
 
