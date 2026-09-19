@@ -7,6 +7,7 @@ const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("string.h");
     @cInclude("unistd.h");
+    @cInclude("sys/statvfs.h");
 });
 
 const TickSample = struct {
@@ -20,19 +21,29 @@ const CpuCounters = struct {
     cpu_count: u16 = 1,
 };
 
+const NetworkCounters = struct {
+    rx_bytes: u64 = 0,
+    tx_bytes: u64 = 0,
+};
+
 pub fn collect(snapshot: *model.Snapshot, sort_mode: model.SortMode) void {
     const first_cpu = readCpuCounters();
+    const first_network = readNetworkCounters();
     var first: [model.MaxProcesses]TickSample = undefined;
     const first_len = readProcessTicks(&first);
 
     _ = c.usleep(120_000);
 
     const second_cpu = readCpuCounters();
+    const second_network = readNetworkCounters();
     readMemory(snapshot);
+    readRootDisk(snapshot);
     readLoad(snapshot);
     readUptime(snapshot);
 
     snapshot.cpu_count = second_cpu.cpu_count;
+    snapshot.network_rx_bps = @as(f64, @floatFromInt(second_network.rx_bytes -| first_network.rx_bytes)) / 0.120;
+    snapshot.network_tx_bps = @as(f64, @floatFromInt(second_network.tx_bytes -| first_network.tx_bytes)) / 0.120;
     const total_delta = second_cpu.total -| first_cpu.total;
     const idle_delta = second_cpu.idle -| first_cpu.idle;
     snapshot.cpu_percent = if (total_delta == 0)
@@ -79,6 +90,46 @@ fn readCpuCounters() CpuCounters {
     }
     if (cpu_count == 0) cpu_count = 1;
     return .{ .total = total, .idle = idle, .cpu_count = cpu_count };
+}
+
+
+fn readRootDisk(snapshot: *model.Snapshot) void {
+    var info: c.struct_statvfs = undefined;
+    if (c.statvfs("/", &info) != 0) return;
+
+    const block_size: u64 = @intCast(if (info.f_frsize > 0) info.f_frsize else info.f_bsize);
+    const total_blocks: u64 = @intCast(info.f_blocks);
+    const available_blocks: u64 = @intCast(info.f_bavail);
+    snapshot.root_disk_total_bytes = total_blocks * block_size;
+    const available_bytes = available_blocks * block_size;
+    snapshot.root_disk_used_bytes = snapshot.root_disk_total_bytes -| available_bytes;
+    snapshot.root_disk_percent = if (snapshot.root_disk_total_bytes == 0) 0 else
+        100.0 * @as(f32, @floatFromInt(snapshot.root_disk_used_bytes)) /
+            @as(f32, @floatFromInt(snapshot.root_disk_total_bytes));
+}
+
+fn readNetworkCounters() NetworkCounters {
+    var buf: [16384]u8 = undefined;
+    const text = readText("/proc/net/dev", &buf);
+    var result = NetworkCounters{};
+    var lines = std.mem.splitScalar(u8, text, '\n');
+
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        const iface = std.mem.trim(u8, line[0..colon], " \t");
+        if (iface.len == 0 or std.mem.eql(u8, iface, "lo")) continue;
+
+        var fields = std.mem.tokenizeAny(u8, line[colon + 1 ..], " \t");
+        var index: usize = 0;
+        while (fields.next()) |field| : (index += 1) {
+            if (index == 0) result.rx_bytes += std.fmt.parseInt(u64, field, 10) catch 0;
+            if (index == 8) {
+                result.tx_bytes += std.fmt.parseInt(u64, field, 10) catch 0;
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 fn readMemory(snapshot: *model.Snapshot) void {
