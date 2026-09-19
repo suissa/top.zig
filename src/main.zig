@@ -14,10 +14,10 @@ const c = @cImport({
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var args = std.process.args();
+    _ = args.skip();
     var tab_set = model.TabSet.all();
-    for (args[1..]) |arg| {
+    while (args.next()) |arg| {
         if (std.mem.startsWith(u8, arg, "--tabs=")) {
             tab_set = model.TabSet.fromCsv(arg["--tabs=".len..]);
         }
