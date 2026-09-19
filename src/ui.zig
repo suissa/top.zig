@@ -26,6 +26,20 @@ const panel = tui.Color.fromRGB(16, 22, 34);
 const bg = tui.Color.fromRGB(7, 10, 17);
 const tab_bg = tui.Color.fromRGB(12, 17, 27);
 
+
+pub fn tabAt(x: u16, y: u16) ?model.Tab {
+    if (y != 2) return null;
+
+    var cursor: u16 = 1;
+    inline for (.{ model.Tab.overview, model.Tab.cpu, model.Tab.memory, model.Tab.processes, model.Tab.disk, model.Tab.network, model.Tab.containers, model.Tab.system }, 0..) |tab, i| {
+        _ = i;
+        const width: u16 = @intCast(tab.label().len + 4);
+        if (x >= cursor and x < cursor + width) return tab;
+        cursor += width + 1;
+    }
+    return null;
+}
+
 pub fn render(
     screen: *tui.screen.Screen,
     snapshot: *const model.Snapshot,
