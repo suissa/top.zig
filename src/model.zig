@@ -71,7 +71,7 @@ pub const TabSet = struct {
 
     pub fn count(self: *const TabSet) usize {
         var n: usize = 0;
-        for (self.enabled) |value| if (value) n += 1;
+        for (self.enabled) |value| {\n            if (value) n += 1;\n        }
         return n;
     }
 
