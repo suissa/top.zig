@@ -31,9 +31,11 @@ Each tab has its own `docs/Tabs/<name>/.README.md` describing:
 
 The intended navigation model is:
 
-- `Tab` / `Shift+Tab`: next/previous tab.
-- `Alt+1..8` or a configurable numeric chord: direct tab selection.
-- Mouse click on the tab header when mouse support is enabled.
+- `Tab`, Right Arrow, `]` or `l`: next enabled tab.
+- Left Arrow, `[` or `h`: previous enabled tab.
+- `1..8`: direct selection by visible-tab position.
+- Mouse click on the tab header: direct selection.
+- `--tabs=overview,disk,...`: choose which tabs exist for this run.
 - `q` / Ctrl+C: quit.
 - Each tab owns only its local shortcuts; global navigation remains consistent.
 
