@@ -25,7 +25,7 @@ pub fn collect(snapshot: *model.Snapshot, sort_mode: model.SortMode) void {
     var first: [model.MaxProcesses]TickSample = undefined;
     const first_len = readProcessTicks(&first);
 
-    std.Thread.sleep(120 * std.time.ns_per_ms);
+    _ = c.usleep(120_000);
 
     const second_cpu = readCpuCounters();
     readMemory(snapshot);
