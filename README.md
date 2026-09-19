@@ -105,6 +105,12 @@ render: ~30 FPS
 
 This keeps animation fluid without polling `/proc` 30 times per second.
 
+## UI / Tab specification
+
+The target dashboard is documented tab-by-tab under [`docs/Tabs/`](docs/Tabs/README.md). Each tab document defines its metrics, Linux data sources, TUI.zig widgets, events, styling, layout, animation behavior, responsive rules and implementation status.
+
+The design is grounded in the official TUI.zig guides for [widgets](https://muhammad-fiaz.github.io/tui.zig/guide/widgets), [events](https://muhammad-fiaz.github.io/tui.zig/guide/events), [styling](https://muhammad-fiaz.github.io/tui.zig/guide/styling), [layout](https://muhammad-fiaz.github.io/tui.zig/guide/layout) and [animation](https://muhammad-fiaz.github.io/tui.zig/guide/animation).
+
 ## Roadmap
 
 - Per-core CPU graphs.
