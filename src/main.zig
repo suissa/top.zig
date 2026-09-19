@@ -13,6 +13,15 @@ const c = @cImport({
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+    var tab_set = model.TabSet.all();
+    for (args[1..]) |arg| {
+        if (std.mem.startsWith(u8, arg, "--tabs=")) {
+            tab_set = model.TabSet.fromCsv(arg["--tabs=".len..]);
+        }
+    }
+
     var term = try tui.terminal.Terminal.init(.{
         .alternate_screen = true,
         .hide_cursor = true,
@@ -34,7 +43,7 @@ pub fn main() !void {
     var history = model.History{};
     var view = ui.ViewState{};
     var sort_mode: model.SortMode = .cpu;
-    var active_tab: model.Tab = .overview;
+    var active_tab: model.Tab = tab_set.first();
 
     var force_refresh = true;
     var last_collect_ns: i128 = 0;
@@ -51,18 +60,18 @@ pub fn main() !void {
                     }
 
                     switch (key.key) {
-                        .tab => active_tab = if (key.modifiers.shift) active_tab.previous() else active_tab.next(),
-                        .left => active_tab = active_tab.previous(),
-                        .right => active_tab = active_tab.next(),
+                        .tab => active_tab = if (key.modifiers.shift) tab_set.previous(active_tab) else tab_set.next(active_tab),
+                        .left => active_tab = tab_set.previous(active_tab),
+                        .right => active_tab = tab_set.next(active_tab),
                         .char => |ch| {
                             if (ch <= 0x7f) {
                                 const byte: u8 = @intCast(ch);
-                                if (model.Tab.fromDigit(byte)) |tab| {
-                                    active_tab = tab;
+                                if (byte >= '1' and byte <= '8') {
+                                    if (tab_set.nth(byte - '1')) |tab| active_tab = tab;
                                 } else switch (byte) {
                                     'q', 'Q' => break,
-                                    '[', 'h' => active_tab = active_tab.previous(),
-                                    ']', 'l' => active_tab = active_tab.next(),
+                                    '[', 'h' => active_tab = tab_set.previous(active_tab),
+                                    ']', 'l' => active_tab = tab_set.next(active_tab),
                                     'c', 'C' => {
                                         sort_mode = .cpu;
                                         force_refresh = true;
@@ -85,7 +94,7 @@ pub fn main() !void {
                 },
                 .mouse => |mouse| {
                     if (mouse.kind == .press and mouse.button == .left) {
-                        if (ui.tabAt(mouse.x, mouse.y)) |tab| active_tab = tab;
+                        if (ui.tabAt(&tab_set, mouse.x, mouse.y)) |tab| active_tab = tab;
                     }
                 },
                 else => {},
@@ -105,7 +114,7 @@ pub fn main() !void {
             force_refresh = false;
         }
 
-        ui.render(&screen, &snapshot, &history, &view, sort_mode, active_tab, now);
+        ui.render(&screen, &snapshot, &history, &view, sort_mode, &tab_set, active_tab, now);
         try renderer.render(&screen);
         _ = c.usleep(33_000);
     }
