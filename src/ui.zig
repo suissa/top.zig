@@ -44,7 +44,6 @@ pub fn tabAt(tab_set: *const model.TabSet, x: u16, y: u16) ?model.Tab {
     var visible: usize = 0;
     for (all_tabs) |tab| {
         if (!tab_set.isEnabled(tab)) continue;
-        _ = visible;
         const width: u16 = @intCast(tab.label().len + 4);
         if (x >= cursor and x < cursor + width) return tab;
         cursor += width + 1;
