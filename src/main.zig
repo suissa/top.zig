@@ -26,8 +26,7 @@ pub fn main() !void {
     var screen = try tui.screen.Screen.init(allocator, initial_size.cols, initial_size.rows);
     defer screen.deinit();
 
-    var renderer = tui.renderer.Renderer.init(allocator);
-    defer renderer.deinit();
+    var renderer = tui.renderer.ImmediateRenderer.init();
 
     var input = tui.input.InputReader.init(allocator);
 
@@ -96,7 +95,6 @@ pub fn main() !void {
         const size = term.getSize() catch initial_size;
         if (size.cols != screen.width or size.rows != screen.height) {
             try screen.resize(size.cols, size.rows);
-            renderer.invalidate();
         }
 
         const now = monotonicNs();
