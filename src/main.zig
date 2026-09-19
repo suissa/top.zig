@@ -7,6 +7,7 @@ const ui = @import("ui.zig");
 const c = @cImport({
     @cInclude("poll.h");
     @cInclude("unistd.h");
+    @cInclude("time.h");
 });
 
 pub fn main() !void {
@@ -32,17 +33,31 @@ pub fn main() !void {
     var history = model.History{};
     var view = ui.ViewState{};
     var sort_mode: model.SortMode = .cpu;
+    var active_tab: model.Tab = .overview;
 
     var force_refresh = true;
     var last_collect_ns: i128 = 0;
 
     while (true) {
         if (readKey()) |key| {
-            switch (key) {
+            if (model.Tab.fromDigit(key)) |tab| {
+                active_tab = tab;
+            } else switch (key) {
                 'q', 'Q', 3 => break,
-                'c', 'C' => { sort_mode = .cpu; force_refresh = true; },
-                'm', 'M' => { sort_mode = .memory; force_refresh = true; },
-                'p', 'P' => { sort_mode = .pid; force_refresh = true; },
+                9, ']' => active_tab = active_tab.next(),
+                '[' => active_tab = active_tab.previous(),
+                'c', 'C' => {
+                    sort_mode = .cpu;
+                    force_refresh = true;
+                },
+                'm', 'M' => {
+                    sort_mode = .memory;
+                    force_refresh = true;
+                },
+                'p', 'P' => {
+                    sort_mode = .pid;
+                    force_refresh = true;
+                },
                 'r', 'R' => force_refresh = true,
                 else => {},
             }
@@ -54,15 +69,15 @@ pub fn main() !void {
             renderer.invalidate();
         }
 
-        const now = std.time.nanoTimestamp();
+        const now = monotonicNs();
         if (force_refresh or now - last_collect_ns >= 900_000_000) {
             collector.collect(&snapshot, sort_mode);
             history.push(snapshot.cpu_percent, snapshot.memory_percent);
-            last_collect_ns = std.time.nanoTimestamp();
+            last_collect_ns = monotonicNs();
             force_refresh = false;
         }
 
-        ui.render(&screen, &snapshot, &history, &view, sort_mode, now);
+        ui.render(&screen, &snapshot, &history, &view, sort_mode, active_tab, now);
         try renderer.render(&screen);
         std.Thread.sleep(33 * std.time.ns_per_ms);
     }
@@ -79,4 +94,11 @@ fn readKey() ?u8 {
     var byte: u8 = 0;
     const n = c.read(c.STDIN_FILENO, &byte, 1);
     return if (n == 1) byte else null;
+}
+
+
+fn monotonicNs() i128 {
+    var ts: c.struct_timespec = undefined;
+    if (c.clock_gettime(c.CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return @as(i128, ts.tv_sec) * 1_000_000_000 + @as(i128, ts.tv_nsec);
 }
