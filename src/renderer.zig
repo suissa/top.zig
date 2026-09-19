@@ -83,16 +83,14 @@ pub const Renderer = struct {
                     (if (n >= 8) 90 + n - 8 else 30 + n);
                 break :blk std.fmt.bufPrint(&buf, "\x1b[{d}m", .{code}) catch "";
             },
-            .palette => |index| std.fmt.bufPrint(
-                &buf,
-                if (background) "\x1b[48;5;{d}m" else "\x1b[38;5;{d}m",
-                .{index},
-            ) catch "",
-            .rgb => |rgb| std.fmt.bufPrint(
-                &buf,
-                if (background) "\x1b[48;2;{d};{d};{d}m" else "\x1b[38;2;{d};{d};{d}m",
-                .{ rgb.r, rgb.g, rgb.b },
-            ) catch "",
+            .palette => |index| if (background)
+                (std.fmt.bufPrint(&buf, "\x1b[48;5;{d}m", .{index}) catch "")
+            else
+                (std.fmt.bufPrint(&buf, "\x1b[38;5;{d}m", .{index}) catch ""),
+            .rgb => |rgb| if (background)
+                (std.fmt.bufPrint(&buf, "\x1b[48;2;{d};{d};{d}m", .{ rgb.r, rgb.g, rgb.b }) catch "")
+            else
+                (std.fmt.bufPrint(&buf, "\x1b[38;2;{d};{d};{d}m", .{ rgb.r, rgb.g, rgb.b }) catch ""),
         };
         try self.writeAll(out);
     }
