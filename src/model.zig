@@ -6,6 +6,43 @@ pub const SortMode = enum {
     pid,
 };
 
+pub const Tab = enum(u8) {
+    overview = 0,
+    cpu,
+    memory,
+    processes,
+    disk,
+    network,
+    containers,
+    system,
+
+    pub fn label(self: Tab) []const u8 {
+        return switch (self) {
+            .overview => "Overview",
+            .cpu => "CPU",
+            .memory => "Memory",
+            .processes => "Processes",
+            .disk => "Disk",
+            .network => "Network",
+            .containers => "Containers",
+            .system => "System",
+        };
+    }
+
+    pub fn next(self: Tab) Tab {
+        return @enumFromInt((@intFromEnum(self) + 1) % 8);
+    }
+
+    pub fn previous(self: Tab) Tab {
+        return @enumFromInt((@intFromEnum(self) + 7) % 8);
+    }
+
+    pub fn fromDigit(key: u8) ?Tab {
+        if (key < '1' or key > '8') return null;
+        return @enumFromInt(key - '1');
+    }
+};
+
 pub const Process = struct {
     pid: u32 = 0,
     ppid: u32 = 0,
