@@ -14,7 +14,9 @@ jobs:
         with:
           version: 0.16.0
       - name: Resolve tui.zig
-        run: zig fetch --save "git+https://github.com/muhammad-fiaz/tui.zig.git"
+        run: |
+          zig fetch --save "git+https://github.com/muhammad-fiaz/tui.zig.git"
+          cat build.zig.zon
       - name: Format check
         run: zig fmt --check build.zig src
       - name: Tests
