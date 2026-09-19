@@ -9,18 +9,13 @@ const c = @cImport({
     @cInclude("poll.h");
     @cInclude("unistd.h");
     @cInclude("time.h");
+    @cInclude("stdio.h");
 });
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    var tab_set = model.TabSet.all();
-    for (std.os.argv[1..]) |arg_z| {
-        const arg = std.mem.sliceTo(arg_z, 0);
-        if (std.mem.startsWith(u8, arg, "--tabs=")) {
-            tab_set = model.TabSet.fromCsv(arg["--tabs=".len..]);
-        }
-    }
+    var tab_set = readTabConfig();
 
     var term = try tui.terminal.Terminal.init(.{
         .alternate_screen = true,
@@ -142,4 +137,30 @@ fn monotonicNs() i128 {
     var ts: c.struct_timespec = undefined;
     if (c.clock_gettime(c.CLOCK_MONOTONIC, &ts) != 0) return 0;
     return @as(i128, ts.tv_sec) * 1_000_000_000 + @as(i128, ts.tv_nsec);
+}
+
+
+fn readTabConfig() model.TabSet {
+    var result = model.TabSet.all();
+    const file = c.fopen("/proc/self/cmdline", "rb") orelse return result;
+    defer _ = c.fclose(file);
+
+    var buf: [4096]u8 = undefined;
+    const n = c.fread(&buf, 1, buf.len, file);
+    if (n == 0) return result;
+
+    var start: usize = 0;
+    var index: usize = 0;
+    while (index <= n) : (index += 1) {
+        if (index == n or buf[index] == 0) {
+            if (index > start) {
+                const arg = buf[start..index];
+                if (std.mem.startsWith(u8, arg, "--tabs=")) {
+                    result = model.TabSet.fromCsv(arg["--tabs=".len..]);
+                }
+            }
+            start = index + 1;
+        }
+    }
+    return result;
 }
